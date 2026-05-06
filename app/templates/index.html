@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Roku Scheduler</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 900px; }
+      label { display:block; margin-top: 14px; font-weight: 600; }
+      input[type=text], input[type=number] { width: 100%; padding: 10px; font-size: 16px; }
+      .row { display:flex; gap: 12px; align-items:center; flex-wrap:wrap; }
+      .day { margin-right: 12px; }
+      button { margin-top: 16px; padding: 12px 16px; font-size: 16px; }
+      pre { background:#111; color:#eee; padding: 12px; border-radius: 10px; overflow:auto; }
+      .hint { color:#555; font-size: 14px; margin-top: 6px; }
+      .card { border:1px solid #ddd; border-radius: 12px; padding: 14px; margin-top: 14px; }
+    </style>
+  </head>
+  <body>
+    <h1>Roku Scheduler</h1>
+    <div class="hint">Schedules a daily/weekly job to launch YouTube on your Roku via Roku ECP.</div>
+
+    <div class="card">
+      <form method="post" action="/save">
+        <label>Roku IP</label>
+        <input type="text" name="roku_ip" value="{{ cfg.roku_ip }}" />
+
+        <label>Time of day (HH:MM)</label>
+        <input type="text" name="time_hhmm" value="{{ cfg.time_hhmm }}" placeholder="07:00" />
+
+        <label>Days of week</label>
+        <div class="row">
+          {% for d in days_all %}
+            <label class="day"><input type="checkbox" name="days" value="{{ d }}" {% if d in cfg.days %}checked{% endif %}/> {{ d }}</label>
+          {% endfor %}
+        </div>
+
+        <label>Repeat every N weeks</label>
+        <input type="number" min="1" max="12" name="repeat_every_weeks" value="{{ cfg.repeat_every_weeks }}" />
+        <div class="hint">Example: 2 means it will run only on even-numbered ISO weeks.</div>
+
+        <label>YouTube URL (optional; best-effort deep link)</label>
+        <input type="text" name="youtube_url" value="{{ cfg.youtube_url }}" placeholder="https://www.youtube.com/playlist?list=..." />
+        <div class="hint">If deep-linking fails, it will still launch YouTube.</div>
+
+        <div class="row" style="margin-top:12px;">
+          <label><input type="checkbox" name="press_home_first" {% if cfg.press_home_first %}checked{% endif %}/> Press Home before launching</label>
+          <label><input type="checkbox" name="enabled" {% if cfg.enabled %}checked{% endif %}/> Enabled</label>
+        </div>
+
+        <button type="submit">Save schedule</button>
+      </form>
+
+      <form method="post" action="/run-now">
+        <button type="submit">Run now</button>
+      </form>
+    </div>
+
+    <h2>Recent logs</h2>
+    <pre>{% for line in log_tail %}{{ line }}
+{% endfor %}</pre>
+  </body>
+</html>

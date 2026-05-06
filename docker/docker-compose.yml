@@ -1,0 +1,14 @@
+services:
+  roku_scheduler_ui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: roku_scheduler_ui
+    restart: unless-stopped
+    ports:
+      - "${UI_PORT:-4050}:4050"
+    environment:
+      - TZ=${TZ:-America/Denver}
+      - DATA_DIR=/data
+    volumes:
+      - ${DATA_DIR:-./data}:/data
