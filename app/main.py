@@ -33,7 +33,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "launch_youtube": True,
     "youtube_app_name": "YouTube",
     "youtube_fallback_app_id": "837",
-    "youtube_url": "",
+    "youtube_url": "https://youtube.com/playlist?list=PLij5aWRkAlLYGEm8gEilCedq7hzHOpp0d&si=El51KX8EHlZVEqRj",
     "enabled": False,
 }
 
