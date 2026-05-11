@@ -34,6 +34,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "youtube_app_name": "YouTube",
     "youtube_fallback_app_id": "837",
     "youtube_url": "https://youtube.com/playlist?list=PLij5aWRkAlLYGEm8gEilCedq7hzHOpp0d&si=El51KX8EHlZVEqRj",
+    "press_select_after_launch": True,
+    "select_delay_seconds": 2,
     "enabled": False,
 }
 
@@ -130,6 +132,13 @@ def run_roku(cfg: dict) -> None:
             params = youtube_params_from_url(yt_url) if yt_url else None
             launch(roku_ip, str(app_id), params=params)
 
+            if cfg.get("press_select_after_launch"):
+                delay = float(cfg.get("select_delay_seconds") or 2)
+                if delay > 0:
+                    time.sleep(min(delay, 10))
+                # Roku ECP uses 'Select' for OK/Enter
+                keypress(roku_ip, "Select")
+
         log(f"OK: launched YouTube on {roku_ip}")
     except Exception as e:
         log(f"ERROR: {type(e).__name__}: {e}")
@@ -170,6 +179,8 @@ def save(
     press_home_first: str | None = Form(default=None),
     days: list[str] = Form(default=[]),
     youtube_url: str = Form(default=""),
+    press_select_after_launch: str | None = Form(default=None),
+    select_delay_seconds: int = Form(2),
 ):
     cfg = load_config()
     cfg["roku_ip"] = roku_ip.strip()
@@ -179,6 +190,8 @@ def save(
     cfg["enabled"] = bool(enabled)
     cfg["press_home_first"] = bool(press_home_first)
     cfg["youtube_url"] = youtube_url.strip()
+    cfg["press_select_after_launch"] = bool(press_select_after_launch)
+    cfg["select_delay_seconds"] = int(select_delay_seconds)
 
     save_config(cfg)
     try:

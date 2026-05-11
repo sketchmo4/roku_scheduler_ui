@@ -44,6 +44,8 @@
 
         <div class="row" style="margin-top:12px;">
           <label><input type="checkbox" name="press_home_first" {% if cfg.press_home_first %}checked{% endif %}/> Press Home before launching</label>
+          <label><input type="checkbox" name="press_select_after_launch" {% if cfg.press_select_after_launch %}checked{% endif %}/> Press Select (OK/Enter) after launching</label>
+          <label><input type="number" min="0" max="10" name="select_delay_seconds" value="{{ cfg.select_delay_seconds }}" style="width: 120px;"/> delay (sec)</label>
           <label><input type="checkbox" name="enabled" {% if cfg.enabled %}checked{% endif %}/> Enabled</label>
         </div>
 
