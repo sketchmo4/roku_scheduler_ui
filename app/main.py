@@ -36,7 +36,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "youtube_url": "https://youtube.com/playlist?list=PLij5aWRkAlLYGEm8gEilCedq7hzHOpp0d&si=El51KX8EHlZVEqRj",
     "press_select_after_launch": True,
     "select_delay_seconds": 2,
-    "playlist_title": "00- morning_playlist",
+    "playlist_title": "00-morning_playlist",
     "search_fallback_enabled": True,
     "search_open_left_presses": 3,
     "search_nav_up_presses": 8,
