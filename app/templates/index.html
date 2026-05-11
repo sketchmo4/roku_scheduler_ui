@@ -40,13 +40,26 @@
 
         <label>YouTube URL (optional; best-effort deep link)</label>
         <input type="text" name="youtube_url" value="{{ cfg.youtube_url }}" placeholder="https://www.youtube.com/playlist?list=..." />
-        <div class="hint">If deep-linking fails, it will still launch YouTube.</div>
+        <div class="hint">If deep-linking fails, you can enable Search fallback below.</div>
+
+        <label>Playlist title (Search fallback)</label>
+        <input type="text" name="playlist_title" value="{{ cfg.playlist_title }}" placeholder="00- morning_playlist" />
+        <div class="hint">Used if YouTube deep-linking doesn't open the playlist reliably.</div>
 
         <div class="row" style="margin-top:12px;">
           <label><input type="checkbox" name="press_home_first" {% if cfg.press_home_first %}checked{% endif %}/> Press Home before launching</label>
           <label><input type="checkbox" name="press_select_after_launch" {% if cfg.press_select_after_launch %}checked{% endif %}/> Press Select (OK/Enter) after launching</label>
           <label><input type="number" min="0" max="10" name="select_delay_seconds" value="{{ cfg.select_delay_seconds }}" style="width: 120px;"/> delay (sec)</label>
+          <label><input type="checkbox" name="search_fallback_enabled" {% if cfg.search_fallback_enabled %}checked{% endif %}/> Search fallback: open playlist by title</label>
+          <label><input type="number" min="0" max="15" name="search_after_launch_delay_seconds" value="{{ cfg.search_after_launch_delay_seconds }}" style="width: 120px;"/> search delay (sec)</label>
           <label><input type="checkbox" name="enabled" {% if cfg.enabled %}checked{% endif %}/> Enabled</label>
+        </div>
+
+        <div class="hint">Search navigation tuning (only if needed): left={{ cfg.search_open_left_presses }}, up={{ cfg.search_nav_up_presses }}, down={{ cfg.search_nav_down_presses }}</div>
+        <div class="row">
+          <label><input type="number" min="0" max="8" name="search_open_left_presses" value="{{ cfg.search_open_left_presses }}" style="width: 120px;"/> left presses</label>
+          <label><input type="number" min="0" max="20" name="search_nav_up_presses" value="{{ cfg.search_nav_up_presses }}" style="width: 120px;"/> up presses</label>
+          <label><input type="number" min="0" max="20" name="search_nav_down_presses" value="{{ cfg.search_nav_down_presses }}" style="width: 120px;"/> down presses</label>
         </div>
 
         <button type="submit">Save schedule</button>

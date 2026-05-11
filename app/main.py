@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from roku_ecp import query_apps, find_app_id, keypress, launch, youtube_params_from_url
+from roku_ecp import query_apps, find_app_id, keypress, launch, youtube_params_from_url, type_text
 
 APP_DIR = Path(__file__).parent
 TEMPLATES = Jinja2Templates(directory=str(APP_DIR / "templates"))
@@ -36,6 +36,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "youtube_url": "https://youtube.com/playlist?list=PLij5aWRkAlLYGEm8gEilCedq7hzHOpp0d&si=El51KX8EHlZVEqRj",
     "press_select_after_launch": True,
     "select_delay_seconds": 2,
+    "playlist_title": "00- morning_playlist",
+    "search_fallback_enabled": True,
+    "search_open_left_presses": 3,
+    "search_nav_up_presses": 8,
+    "search_nav_down_presses": 1,
+    "search_after_launch_delay_seconds": 4,
     "enabled": False,
 }
 
@@ -139,6 +145,35 @@ def run_roku(cfg: dict) -> None:
                 # Roku ECP uses 'Select' for OK/Enter
                 keypress(roku_ip, "Select")
 
+            # Fallback: navigate to Search and type playlist title
+            if cfg.get("search_fallback_enabled"):
+                time.sleep(min(float(cfg.get("search_after_launch_delay_seconds") or 4), 15))
+                title = (cfg.get("playlist_title") or "").strip()
+                if title:
+                    # attempt to open left nav
+                    for _ in range(int(cfg.get("search_open_left_presses") or 3)):
+                        keypress(roku_ip, "Left")
+                        time.sleep(0.15)
+                    # move to top
+                    for _ in range(int(cfg.get("search_nav_up_presses") or 8)):
+                        keypress(roku_ip, "Up")
+                        time.sleep(0.10)
+                    # down to Search
+                    for _ in range(int(cfg.get("search_nav_down_presses") or 1)):
+                        keypress(roku_ip, "Down")
+                        time.sleep(0.10)
+                    keypress(roku_ip, "Select")
+                    time.sleep(0.6)
+                    type_text(roku_ip, title)
+                    time.sleep(0.8)
+                    # choose first result
+                    keypress(roku_ip, "Down")
+                    time.sleep(0.2)
+                    keypress(roku_ip, "Select")
+                    time.sleep(0.8)
+                    # try to start playing
+                    keypress(roku_ip, "Select")
+
         log(f"OK: launched YouTube on {roku_ip}")
     except Exception as e:
         log(f"ERROR: {type(e).__name__}: {e}")
@@ -181,6 +216,12 @@ def save(
     youtube_url: str = Form(default=""),
     press_select_after_launch: str | None = Form(default=None),
     select_delay_seconds: int = Form(2),
+    playlist_title: str = Form(default=""),
+    search_fallback_enabled: str | None = Form(default=None),
+    search_open_left_presses: int = Form(3),
+    search_nav_up_presses: int = Form(8),
+    search_nav_down_presses: int = Form(1),
+    search_after_launch_delay_seconds: int = Form(4),
 ):
     cfg = load_config()
     cfg["roku_ip"] = roku_ip.strip()
@@ -192,6 +233,12 @@ def save(
     cfg["youtube_url"] = youtube_url.strip()
     cfg["press_select_after_launch"] = bool(press_select_after_launch)
     cfg["select_delay_seconds"] = int(select_delay_seconds)
+    cfg["playlist_title"] = playlist_title.strip()
+    cfg["search_fallback_enabled"] = bool(search_fallback_enabled)
+    cfg["search_open_left_presses"] = int(search_open_left_presses)
+    cfg["search_nav_up_presses"] = int(search_nav_up_presses)
+    cfg["search_nav_down_presses"] = int(search_nav_down_presses)
+    cfg["search_after_launch_delay_seconds"] = int(search_after_launch_delay_seconds)
 
     save_config(cfg)
     try:

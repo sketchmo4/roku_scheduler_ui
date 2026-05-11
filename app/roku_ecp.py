@@ -41,6 +41,13 @@ def keypress(roku_ip: str, key: str) -> None:
     http_post(f"http://{roku_ip}:8060/keypress/{key}")
 
 
+def type_text(roku_ip: str, text: str) -> None:
+    # Roku ECP supports /keypress/Lit_<text> (URL-encoded)
+    for ch in text:
+        enc = urllib.parse.quote(ch, safe="")
+        http_post(f"http://{roku_ip}:8060/keypress/Lit_{enc}")
+
+
 def launch(roku_ip: str, app_id: str, params: dict | None = None) -> None:
     url = f"http://{roku_ip}:8060/launch/{app_id}"
     if params:
