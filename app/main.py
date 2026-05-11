@@ -37,11 +37,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "press_select_after_launch": True,
     "select_delay_seconds": 2,
     "playlist_title": "00-morning_playlist",
-    "search_fallback_enabled": True,
-    "search_open_left_presses": 3,
-    "search_nav_up_presses": 8,
-    "search_nav_down_presses": 1,
+    "search_fallback_enabled": False,
     "search_after_launch_delay_seconds": 4,
+    "nav_macro_enabled": True,
+    "nav_macro": "Left,Down,Down,Down,Down,Right,Right,Right,Select,Select",
+    "nav_macro_delay_ms": 250,
     "enabled": False,
 }
 
@@ -145,34 +145,29 @@ def run_roku(cfg: dict) -> None:
                 # Roku ECP uses 'Select' for OK/Enter
                 keypress(roku_ip, "Select")
 
-            # Fallback: navigate to Search and type playlist title
-            if cfg.get("search_fallback_enabled"):
+            # Fallback: simple navigation macro (most reliable)
+            if cfg.get("nav_macro_enabled"):
                 time.sleep(min(float(cfg.get("search_after_launch_delay_seconds") or 4), 15))
-                title = (cfg.get("playlist_title") or "").strip()
-                if title:
-                    # attempt to open left nav
-                    for _ in range(int(cfg.get("search_open_left_presses") or 3)):
-                        keypress(roku_ip, "Left")
-                        time.sleep(0.15)
-                    # move to top
-                    for _ in range(int(cfg.get("search_nav_up_presses") or 8)):
-                        keypress(roku_ip, "Up")
-                        time.sleep(0.10)
-                    # down to Search
-                    for _ in range(int(cfg.get("search_nav_down_presses") or 1)):
-                        keypress(roku_ip, "Down")
-                        time.sleep(0.10)
-                    keypress(roku_ip, "Select")
-                    time.sleep(0.6)
-                    type_text(roku_ip, title)
-                    time.sleep(0.8)
-                    # choose first result
-                    keypress(roku_ip, "Down")
-                    time.sleep(0.2)
-                    keypress(roku_ip, "Select")
-                    time.sleep(0.8)
-                    # try to start playing
-                    keypress(roku_ip, "Select")
+                macro = (cfg.get("nav_macro") or "").strip()
+                delay_ms = int(cfg.get("nav_macro_delay_ms") or 250)
+                if macro:
+                    for step in [s.strip() for s in macro.split(",") if s.strip()]:
+                        # allow common aliases
+                        step_norm = step.lower()
+                        key = {
+                            "enter": "Select",
+                            "ok": "Select",
+                            "select": "Select",
+                            "up": "Up",
+                            "down": "Down",
+                            "left": "Left",
+                            "right": "Right",
+                            "back": "Back",
+                            "home": "Home",
+                        }.get(step_norm)
+                        if key:
+                            keypress(roku_ip, key)
+                            time.sleep(max(0.05, min(delay_ms / 1000.0, 2.0)))
 
         log(f"OK: launched YouTube on {roku_ip}")
     except Exception as e:
@@ -217,11 +212,10 @@ def save(
     press_select_after_launch: str | None = Form(default=None),
     select_delay_seconds: int = Form(2),
     playlist_title: str = Form(default=""),
-    search_fallback_enabled: str | None = Form(default=None),
-    search_open_left_presses: int = Form(3),
-    search_nav_up_presses: int = Form(8),
-    search_nav_down_presses: int = Form(1),
     search_after_launch_delay_seconds: int = Form(4),
+    nav_macro_enabled: str | None = Form(default=None),
+    nav_macro: str = Form(default=""),
+    nav_macro_delay_ms: int = Form(250),
 ):
     cfg = load_config()
     cfg["roku_ip"] = roku_ip.strip()
@@ -234,11 +228,10 @@ def save(
     cfg["press_select_after_launch"] = bool(press_select_after_launch)
     cfg["select_delay_seconds"] = int(select_delay_seconds)
     cfg["playlist_title"] = playlist_title.strip()
-    cfg["search_fallback_enabled"] = bool(search_fallback_enabled)
-    cfg["search_open_left_presses"] = int(search_open_left_presses)
-    cfg["search_nav_up_presses"] = int(search_nav_up_presses)
-    cfg["search_nav_down_presses"] = int(search_nav_down_presses)
     cfg["search_after_launch_delay_seconds"] = int(search_after_launch_delay_seconds)
+    cfg["nav_macro_enabled"] = bool(nav_macro_enabled)
+    cfg["nav_macro"] = nav_macro.strip()
+    cfg["nav_macro_delay_ms"] = int(nav_macro_delay_ms)
 
     save_config(cfg)
     try:
