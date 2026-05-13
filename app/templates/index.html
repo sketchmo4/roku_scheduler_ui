@@ -6,7 +6,7 @@
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; max-width: 900px; }
       label { display:block; margin-top: 14px; font-weight: 600; }
-      input[type=text], input[type=number] { width: 100%; padding: 10px; font-size: 16px; }
+      input[type=text], input[type=number], textarea { width: 100%; padding: 10px; font-size: 16px; }
       .row { display:flex; gap: 12px; align-items:center; flex-wrap:wrap; }
       .day { margin-right: 12px; }
       button { margin-top: 16px; padding: 12px 16px; font-size: 16px; }
@@ -38,28 +38,21 @@
         <input type="number" min="1" max="12" name="repeat_every_weeks" value="{{ cfg.repeat_every_weeks }}" />
         <div class="hint">Example: 2 means it will run only on even-numbered ISO weeks.</div>
 
-        <label>YouTube URL (optional; best-effort deep link)</label>
-        <input type="text" name="youtube_url" value="{{ cfg.youtube_url }}" placeholder="https://www.youtube.com/playlist?list=..." />
-        <div class="hint">If deep-linking fails, you can enable Search fallback below.</div>
+        <label>Pick mode</label>
+        <div class="row">
+          <label><input type="radio" name="pick_mode" value="random_active" {% if cfg.pick_mode == 'random_active' %}checked{% endif %}/> Random (active only)</label>
+          <label><input type="radio" name="pick_mode" value="first_active" {% if cfg.pick_mode == 'first_active' %}checked{% endif %}/> First active</label>
+        </div>
 
-        <label>Playlist title (legacy / optional)</label>
-        <input type="text" name="playlist_title" value="{{ cfg.playlist_title }}" placeholder="00-morning_playlist" />
-        <div class="hint">Not currently used when Navigation Macro is enabled.</div>
+        <label>Video library (one YouTube URL per line)</label>
+        <textarea name="videos_text" rows="10" style="width:100%; padding:10px; font-size:14px;">{% for v in cfg.videos %}{% if not v.active %}# {% endif %}{{ v.url }}
+{% endfor %}</textarea>
+        <div class="hint">Prefix a line with <code>#</code> to disable it. Only active videos are eligible for random selection.</div>
 
         <div class="row" style="margin-top:12px;">
           <label><input type="checkbox" name="press_home_first" {% if cfg.press_home_first %}checked{% endif %}/> Press Home before launching</label>
-          <label><input type="checkbox" name="press_select_after_launch" {% if cfg.press_select_after_launch %}checked{% endif %}/> Press Select (OK/Enter) after launching</label>
-          <label><input type="number" min="0" max="10" name="select_delay_seconds" value="{{ cfg.select_delay_seconds }}" style="width: 120px;"/> delay (sec)</label>
-          <label><input type="checkbox" name="nav_macro_enabled" {% if cfg.nav_macro_enabled %}checked{% endif %}/> Navigation Macro enabled</label>
-          <label><input type="number" min="0" max="15" name="search_after_launch_delay_seconds" value="{{ cfg.search_after_launch_delay_seconds }}" style="width: 120px;"/> macro delay (sec)</label>
           <label><input type="checkbox" name="enabled" {% if cfg.enabled %}checked{% endif %}/> Enabled</label>
         </div>
-
-        <label>Navigation Macro (comma-separated keys)</label>
-        <input type="text" name="nav_macro" value="{{ cfg.nav_macro }}" />
-        <div class="hint">Example: Left,Down,Down,Down,Down,Right,Right,Right,Select,Select (Enter/OK = Select)</div>
-        <label>Macro key delay (ms)</label>
-        <input type="number" min="50" max="2000" name="nav_macro_delay_ms" value="{{ cfg.nav_macro_delay_ms }}" style="width: 160px;"/>
 
         <button type="submit">Save schedule</button>
       </form>

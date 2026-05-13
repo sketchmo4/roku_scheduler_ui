@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -30,18 +31,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "time_hhmm": "07:00",
     "repeat_every_weeks": 1,
     "press_home_first": True,
+
+    # YouTube launching
     "launch_youtube": True,
     "youtube_app_name": "YouTube",
     "youtube_fallback_app_id": "837",
-    "youtube_url": "https://youtube.com/playlist?list=PLij5aWRkAlLYGEm8gEilCedq7hzHOpp0d&si=El51KX8EHlZVEqRj",
-    "press_select_after_launch": True,
-    "select_delay_seconds": 2,
-    "playlist_title": "00-morning_playlist",
-    "search_fallback_enabled": False,
-    "search_after_launch_delay_seconds": 4,
-    "nav_macro_enabled": True,
-    "nav_macro": "Left,Down,Down,Down,Down,Right,Right,Right,Select,Select",
-    "nav_macro_delay_ms": 250,
+
+    # Video library managed in the UI
+    "videos": [],  # [{"url": "https://www.youtube.com/watch?v=...", "active": true}]
+    "pick_mode": "random_active",  # random_active | first_active
+
     "enabled": False,
 }
 
@@ -59,6 +58,10 @@ def load_config() -> dict:
         cfg = json.loads(CONFIG_PATH.read_text("utf-8"))
         merged = dict(DEFAULT_CONFIG)
         merged.update(cfg or {})
+        # normalize videos list
+        vids = merged.get("videos")
+        if not isinstance(vids, list):
+            merged["videos"] = []
         return merged
     except Exception:
         return dict(DEFAULT_CONFIG)
@@ -134,42 +137,29 @@ def run_roku(cfg: dict) -> None:
             app_id = find_app_id(apps, cfg.get("youtube_app_name", "YouTube")) or cfg.get(
                 "youtube_fallback_app_id", "837"
             )
-            yt_url = (cfg.get("youtube_url") or "").strip()
-            params = youtube_params_from_url(yt_url) if yt_url else None
+
+            # pick video
+            videos = cfg.get("videos") or []
+            active = [v for v in videos if (v or {}).get("active") and (v or {}).get("url")]
+            pick_mode = (cfg.get("pick_mode") or "random_active").strip()
+
+            chosen_url = None
+            if pick_mode == "first_active":
+                chosen_url = (active[0]["url"] if active else None)
+            else:
+                chosen_url = (random.choice(active)["url"] if active else None)
+
+            if not chosen_url:
+                log("ERROR: no active videos configured")
+                return
+
+            params = youtube_params_from_url(chosen_url)
+            if not params:
+                log(f"ERROR: could not extract video id from URL: {chosen_url}")
+                return
+
             launch(roku_ip, str(app_id), params=params)
-
-            if cfg.get("press_select_after_launch"):
-                delay = float(cfg.get("select_delay_seconds") or 2)
-                if delay > 0:
-                    time.sleep(min(delay, 10))
-                # Roku ECP uses 'Select' for OK/Enter
-                keypress(roku_ip, "Select")
-
-            # Fallback: simple navigation macro (most reliable)
-            if cfg.get("nav_macro_enabled"):
-                time.sleep(min(float(cfg.get("search_after_launch_delay_seconds") or 4), 15))
-                macro = (cfg.get("nav_macro") or "").strip()
-                delay_ms = int(cfg.get("nav_macro_delay_ms") or 250)
-                if macro:
-                    for step in [s.strip() for s in macro.split(",") if s.strip()]:
-                        # allow common aliases
-                        step_norm = step.lower()
-                        key = {
-                            "enter": "Select",
-                            "ok": "Select",
-                            "select": "Select",
-                            "up": "Up",
-                            "down": "Down",
-                            "left": "Left",
-                            "right": "Right",
-                            "back": "Back",
-                            "home": "Home",
-                        }.get(step_norm)
-                        if key:
-                            keypress(roku_ip, key)
-                            time.sleep(max(0.05, min(delay_ms / 1000.0, 2.0)))
-
-        log(f"OK: launched YouTube on {roku_ip}")
+            log(f"OK: launched YouTube video: {chosen_url}")
     except Exception as e:
         log(f"ERROR: {type(e).__name__}: {e}")
 
@@ -208,14 +198,8 @@ def save(
     enabled: str | None = Form(default=None),
     press_home_first: str | None = Form(default=None),
     days: list[str] = Form(default=[]),
-    youtube_url: str = Form(default=""),
-    press_select_after_launch: str | None = Form(default=None),
-    select_delay_seconds: int = Form(2),
-    playlist_title: str = Form(default=""),
-    search_after_launch_delay_seconds: int = Form(4),
-    nav_macro_enabled: str | None = Form(default=None),
-    nav_macro: str = Form(default=""),
-    nav_macro_delay_ms: int = Form(250),
+    pick_mode: str = Form(default="random_active"),
+    videos_text: str = Form(default=""),
 ):
     cfg = load_config()
     cfg["roku_ip"] = roku_ip.strip()
@@ -224,14 +208,25 @@ def save(
     cfg["days"] = [d for d in days if d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")]
     cfg["enabled"] = bool(enabled)
     cfg["press_home_first"] = bool(press_home_first)
-    cfg["youtube_url"] = youtube_url.strip()
-    cfg["press_select_after_launch"] = bool(press_select_after_launch)
-    cfg["select_delay_seconds"] = int(select_delay_seconds)
-    cfg["playlist_title"] = playlist_title.strip()
-    cfg["search_after_launch_delay_seconds"] = int(search_after_launch_delay_seconds)
-    cfg["nav_macro_enabled"] = bool(nav_macro_enabled)
-    cfg["nav_macro"] = nav_macro.strip()
-    cfg["nav_macro_delay_ms"] = int(nav_macro_delay_ms)
+
+    pick_mode = (pick_mode or "random_active").strip()
+    if pick_mode not in ("random_active", "first_active"):
+        pick_mode = "random_active"
+    cfg["pick_mode"] = pick_mode
+
+    # parse videos from textarea: one URL per line; prefix with "#" to disable
+    videos = []
+    for raw in (videos_text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        active = True
+        if line.startswith("#"):
+            active = False
+            line = line.lstrip("#").strip()
+        if line:
+            videos.append({"url": line, "active": active})
+    cfg["videos"] = videos
 
     save_config(cfg)
     try:

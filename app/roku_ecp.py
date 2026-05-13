@@ -55,26 +55,28 @@ def launch(roku_ip: str, app_id: str, params: dict | None = None) -> None:
     http_post(url)
 
 
-def youtube_params_from_url(url: str) -> dict:
-    """Best-effort YouTube deep link params.
-
-    Notes:
-    - Roku YouTube deep-linking is not consistently documented.
-    - We try a few common conventions; if it doesn't work, we still at least launch YouTube.
-    """
+def youtube_video_id_from_url(url: str) -> str | None:
     try:
         u = urllib.parse.urlparse(url)
         qs = urllib.parse.parse_qs(u.query)
-        # playlist id
-        playlist = (qs.get("list") or [""])[0]
-        video = (qs.get("v") or [""])[0]
-        if playlist and video:
-            return {"contentID": video, "mediaType": "video", "list": playlist}
-        if playlist:
-            # treat playlist as 'list' param
-            return {"list": playlist}
-        if video:
-            return {"contentID": video, "mediaType": "video"}
+        vid = (qs.get("v") or [""])[0].strip()
+        if vid:
+            return vid
+        # youtu.be/<id>
+        if u.netloc.endswith("youtu.be"):
+            p = u.path.strip("/")
+            return p or None
     except Exception:
-        pass
+        return None
+    return None
+
+
+def youtube_params_from_url(url: str) -> dict:
+    """Best-effort YouTube deep link params (video id only).
+
+    We keep this intentionally simple: launch YouTube on a specific video id.
+    """
+    vid = youtube_video_id_from_url(url)
+    if vid:
+        return {"contentID": vid, "mediaType": "video"}
     return {}
