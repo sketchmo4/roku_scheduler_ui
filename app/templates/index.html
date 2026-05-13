@@ -22,59 +22,88 @@
     <div class="hint">Schedules a job to launch a random active YouTube video on your Roku via Roku ECP.</div>
 
     <div class="card">
-      <h2>Current schedule</h2>
-      <div class="hint">
-        Status:
-        {% if cfg.enabled %}
-          <span class="pill">ENABLED</span>
-        {% else %}
-          <span class="pill">DISABLED</span>
-        {% endif %}
-        &nbsp;|&nbsp; Days: <b>{{ cfg.days|join(', ') }}</b>
-        &nbsp;|&nbsp; Time: <b>{{ cfg.time_hhmm }}</b>
-        &nbsp;|&nbsp; Repeat every: <b>{{ cfg.repeat_every_weeks }}</b> week(s)
-        &nbsp;|&nbsp; List: <b>{{ cfg.selected_list }}</b>
-      </div>
+      <h2>Schedules</h2>
+      <div class="hint">You can add multiple scheduled runs. Each schedule selects a video list.</div>
 
-      <form method="post" action="/save-schedule">
+      <table style="width:100%; border-collapse: collapse; margin-top:10px;">
+        <thead>
+          <tr>
+            <th style="text-align:left; border-bottom:1px solid #eee; padding:8px;">ID</th>
+            <th style="text-align:left; border-bottom:1px solid #eee; padding:8px;">Enabled</th>
+            <th style="text-align:left; border-bottom:1px solid #eee; padding:8px;">Days</th>
+            <th style="text-align:left; border-bottom:1px solid #eee; padding:8px;">Time</th>
+            <th style="text-align:left; border-bottom:1px solid #eee; padding:8px;">Repeat</th>
+            <th style="text-align:left; border-bottom:1px solid #eee; padding:8px;">List</th>
+            <th style="text-align:left; border-bottom:1px solid #eee; padding:8px;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in cfg.schedules %}
+          <tr>
+            <td style="padding:8px; border-bottom:1px solid #f3f3f3;"><code>{{ s.id }}</code></td>
+            <td style="padding:8px; border-bottom:1px solid #f3f3f3;">{{ 'yes' if s.enabled else 'no' }}</td>
+            <td style="padding:8px; border-bottom:1px solid #f3f3f3;">{{ s.days|join(', ') }}</td>
+            <td style="padding:8px; border-bottom:1px solid #f3f3f3;">{{ s.time_hhmm }}</td>
+            <td style="padding:8px; border-bottom:1px solid #f3f3f3;">{{ s.repeat_every_weeks }}</td>
+            <td style="padding:8px; border-bottom:1px solid #f3f3f3;">{{ s.list }}</td>
+            <td style="padding:8px; border-bottom:1px solid #f3f3f3;">
+              <form method="post" action="/delete-schedule" onsubmit="return confirm('Delete schedule {{ s.id }}?');">
+                <input type="hidden" name="schedule_id" value="{{ s.id }}" />
+                <button type="submit" style="background:#fff;">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <hr />
+
+      <h3>Add schedule</h3>
+      <form method="post" action="/add-schedule">
+        <label>Schedule ID</label>
+        <input type="text" name="schedule_id" placeholder="e.g. morning / lunch / night" />
+
         <label>Roku IP</label>
-        <input type="text" name="roku_ip" value="{{ cfg.roku_ip }}" />
+        <input type="text" name="roku_ip" value="{{ cfg.roku_ip }}" disabled />
+        <div class="hint">Roku IP is global right now (edit in config.json if needed).</div>
 
         <label>Time of day (HH:MM)</label>
-        <input type="text" name="time_hhmm" value="{{ cfg.time_hhmm }}" placeholder="07:00" />
+        <input type="text" name="time_hhmm" value="07:00" />
 
         <label>Days of week</label>
         <div class="row">
           {% for d in days_all %}
-            <label class="day"><input type="checkbox" name="days" value="{{ d }}" {% if d in cfg.days %}checked{% endif %}/> {{ d }}</label>
+            <label class="day"><input type="checkbox" name="days" value="{{ d }}" checked /> {{ d }}</label>
           {% endfor %}
         </div>
 
         <label>Repeat every N weeks</label>
-        <input type="number" min="1" max="12" name="repeat_every_weeks" value="{{ cfg.repeat_every_weeks }}" />
+        <input type="number" min="1" max="12" name="repeat_every_weeks" value="1" />
 
         <label>Which list to play</label>
-        <select name="selected_list" style="padding:10px; font-size:16px;">
+        <select name="list_name" style="padding:10px; font-size:16px;">
           {% for name in cfg.video_lists.keys() %}
-            <option value="{{ name }}" {% if name == cfg.selected_list %}selected{% endif %}>{{ name }}</option>
+            <option value="{{ name }}">{{ name }}</option>
           {% endfor %}
         </select>
 
         <label>Schedule enabled?</label>
         <div class="row">
-          <label><input type="radio" name="enabled" value="on" {% if cfg.enabled %}checked{% endif %}/> On</label>
-          <label><input type="radio" name="enabled" value="off" {% if not cfg.enabled %}checked{% endif %}/> Off</label>
+          <label><input type="radio" name="enabled" value="on" checked /> On</label>
+          <label><input type="radio" name="enabled" value="off" /> Off</label>
         </div>
-        <div class="hint">This defaults to On. Switch to Off to stop scheduled runs.</div>
 
-        <button type="submit">Save schedule</button>
-      </form>
-
-      <form method="post" action="/delete-schedule" onsubmit="return confirm('Disable schedule?');">
-        <button type="submit" style="background:#fff;">Delete schedule (disable)</button>
+        <button type="submit">Add schedule</button>
       </form>
 
       <form method="post" action="/run-now">
+        <label>Run now (choose list)</label>
+        <select name="list_name" style="padding:10px; font-size:16px;">
+          {% for name in cfg.video_lists.keys() %}
+            <option value="{{ name }}">{{ name }}</option>
+          {% endfor %}
+        </select>
         <button type="submit">Run now</button>
       </form>
     </div>

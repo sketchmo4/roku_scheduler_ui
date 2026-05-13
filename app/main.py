@@ -28,11 +28,17 @@ LOG_PATH = DATA_DIR / "runs.log"
 DEFAULT_CONFIG: dict[str, Any] = {
     "roku_ip": "10.0.0.141",
 
-    # schedule
-    "enabled": True,
-    "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-    "time_hhmm": "07:00",
-    "repeat_every_weeks": 1,
+    # schedules (multiple)
+    "schedules": [
+        {
+            "id": "morning",
+            "enabled": True,
+            "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            "time_hhmm": "07:00",
+            "repeat_every_weeks": 1,
+            "list": "default",
+        }
+    ],
 
     # YouTube launching
     "launch_youtube": True,
@@ -43,7 +49,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "video_lists": {
         "default": [],  # [{"url": "https://www.youtube.com/watch?v=...", "active": true}]
     },
-    "selected_list": "default",
+
+    # video picking
     "pick_mode": "random_active",  # random_active | first_active
 }
 
@@ -73,10 +80,52 @@ def load_config() -> dict:
             merged["video_lists"] = {"default": []}
         merged.setdefault("video_lists", {}).setdefault("default", [])
 
-        sel = merged.get("selected_list") or "default"
-        if sel not in merged["video_lists"]:
-            sel = "default"
-        merged["selected_list"] = sel
+        # normalize schedules (and migrate legacy single schedule fields)
+        schedules = merged.get("schedules")
+        if not isinstance(schedules, list) or not schedules:
+            schedules = []
+
+        # legacy fields: enabled/days/time_hhmm/repeat/selected_list
+        if any(k in merged for k in ("enabled", "days", "time_hhmm", "repeat_every_weeks", "selected_list")) and not schedules:
+            schedules = [
+                {
+                    "id": "schedule1",
+                    "enabled": bool(merged.get("enabled", True)),
+                    "days": merged.get("days") or ["mon"],
+                    "time_hhmm": merged.get("time_hhmm") or "07:00",
+                    "repeat_every_weeks": int(merged.get("repeat_every_weeks") or 1),
+                    "list": merged.get("selected_list") or "default",
+                }
+            ]
+
+        # cleanup legacy keys
+        for k in ("enabled", "days", "time_hhmm", "repeat_every_weeks", "selected_list"):
+            merged.pop(k, None)
+
+        # validate schedule objects
+        out = []
+        seen = set()
+        for s in schedules:
+            if not isinstance(s, dict):
+                continue
+            sid = str(s.get("id") or "").strip() or f"sched_{len(out)+1}"
+            if sid in seen:
+                continue
+            seen.add(sid)
+            lst = s.get("list") or "default"
+            if lst not in merged["video_lists"]:
+                lst = "default"
+            out.append(
+                {
+                    "id": sid,
+                    "enabled": bool(s.get("enabled", True)),
+                    "days": [d for d in (s.get("days") or []) if d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")],
+                    "time_hhmm": str(s.get("time_hhmm") or "07:00"),
+                    "repeat_every_weeks": int(s.get("repeat_every_weeks") or 1),
+                    "list": lst,
+                }
+            )
+        merged["schedules"] = out
 
         return merged
     except Exception:
@@ -91,72 +140,74 @@ def save_config(cfg: dict) -> None:
 scheduler = BackgroundScheduler(timezone=os.environ.get("TZ", "America/Denver"))
 scheduler.start()
 
-CURRENT_JOB_ID = "roku_job"
+def schedule_jobs(cfg: dict) -> None:
+    # clear existing jobs
+    for j in list(scheduler.get_jobs()):
+        try:
+            scheduler.remove_job(j.id)
+        except Exception:
+            pass
 
-
-def schedule_job(cfg: dict) -> None:
-    # remove old
-    try:
-        scheduler.remove_job(CURRENT_JOB_ID)
-    except Exception:
-        pass
-
-    if not cfg.get("enabled"):
-        log("Scheduler disabled; no job scheduled")
+    schedules = cfg.get("schedules") or []
+    if not schedules:
+        log("No schedules configured")
         return
 
-    # parse hh:mm
-    hhmm = str(cfg.get("time_hhmm") or "07:00")
-    if ":" not in hhmm:
-        raise ValueError("time_hhmm must be HH:MM")
-    hour_s, min_s = hhmm.split(":", 1)
-    hour = int(hour_s)
-    minute = int(min_s)
+    for s in schedules:
+        if not s.get("enabled"):
+            continue
 
-    days = cfg.get("days") or []
-    if not days:
-        raise ValueError("Choose at least one day")
+        sid = str(s.get("id"))
+        hhmm = str(s.get("time_hhmm") or "07:00")
+        if ":" not in hhmm:
+            log(f"Invalid time for schedule {sid}: {hhmm}")
+            continue
+        hour_s, min_s = hhmm.split(":", 1)
+        hour = int(hour_s)
+        minute = int(min_s)
 
-    # APScheduler Cron: day_of_week accepts mon,tue,...
-    dow = ",".join(days)
+        days = s.get("days") or []
+        if not days:
+            log(f"Schedule {sid} has no days; skipping")
+            continue
 
-    # weekly repeat: simplest is schedule every week and gate by week number modulus.
-    repeat_weeks = int(cfg.get("repeat_every_weeks") or 1)
-    repeat_weeks = max(1, min(12, repeat_weeks))
+        dow = ",".join(days)
+        repeat_weeks = int(s.get("repeat_every_weeks") or 1)
+        repeat_weeks = max(1, min(12, repeat_weeks))
 
-    trigger = CronTrigger(day_of_week=dow, hour=hour, minute=minute)
+        trigger = CronTrigger(day_of_week=dow, hour=hour, minute=minute)
 
-    def wrapped():
-        if repeat_weeks > 1:
-            iso_week = int(datetime.now().strftime("%V"))
-            if iso_week % repeat_weeks != 0:
+        def wrapped(schedule_id=sid):
+            schedule = next((x for x in (cfg.get("schedules") or []) if x.get("id") == schedule_id), None)
+            if not schedule:
                 return
-        run_roku(cfg)
+            if repeat_weeks > 1:
+                iso_week = int(datetime.now().strftime("%V"))
+                if iso_week % repeat_weeks != 0:
+                    return
+            run_roku(cfg, schedule)
 
-    scheduler.add_job(wrapped, trigger=trigger, id=CURRENT_JOB_ID, replace_existing=True)
-    log(f"Scheduled: days={days} time={hhmm} repeat_every_weeks={repeat_weeks}")
+        scheduler.add_job(wrapped, trigger=trigger, id=f"roku_{sid}", replace_existing=True)
+        log(f"Scheduled[{sid}]: days={days} time={hhmm} repeat_every_weeks={repeat_weeks} list={s.get('list')}")
 
 
-def run_roku(cfg: dict) -> None:
+def run_roku(cfg: dict, schedule: dict | None = None) -> None:
     roku_ip = cfg.get("roku_ip")
     if not roku_ip:
         log("ERROR: missing roku_ip")
         return
 
-    try:
-        if cfg.get("press_home_first"):
-            keypress(roku_ip, "Home")
-            time.sleep(0.6)
+    schedule = schedule or {"id": "manual", "list": "default"}
+    list_name = schedule.get("list") or "default"
 
+    try:
         if cfg.get("launch_youtube"):
             apps = query_apps(roku_ip)
             app_id = find_app_id(apps, cfg.get("youtube_app_name", "YouTube")) or cfg.get(
                 "youtube_fallback_app_id", "837"
             )
 
-            # pick video (from selected list)
             video_lists = cfg.get("video_lists") or {}
-            list_name = cfg.get("selected_list") or "default"
             videos = video_lists.get(list_name) or []
             active = [v for v in videos if (v or {}).get("active") and (v or {}).get("url")]
             pick_mode = (cfg.get("pick_mode") or "random_active").strip()
@@ -168,7 +219,7 @@ def run_roku(cfg: dict) -> None:
                 chosen_url = (random.choice(active)["url"] if active else None)
 
             if not chosen_url:
-                log("ERROR: no active videos configured")
+                log(f"ERROR: no active videos configured for list={list_name}")
                 return
 
             params = youtube_params_from_url(chosen_url)
@@ -177,7 +228,7 @@ def run_roku(cfg: dict) -> None:
                 return
 
             launch(roku_ip, str(app_id), params=params)
-            log(f"OK: launched YouTube video (list={list_name}): {chosen_url}")
+            log(f"OK: launched YouTube video (schedule={schedule.get('id')} list={list_name}): {chosen_url}")
     except Exception as e:
         log(f"ERROR: {type(e).__name__}: {e}")
 
@@ -189,7 +240,7 @@ app = FastAPI(title="Roku Scheduler")
 def _startup():
     cfg = load_config()
     try:
-        schedule_job(cfg)
+        schedule_jobs(cfg)
     except Exception as e:
         log(f"ERROR scheduling on startup: {e}")
 
@@ -208,36 +259,37 @@ def home(request: Request):
     )
 
 
-@app.post("/save-schedule")
-def save_schedule(
-    roku_ip: str = Form(...),
+@app.post("/add-schedule")
+def add_schedule(
+    schedule_id: str = Form(...),
     time_hhmm: str = Form(...),
     repeat_every_weeks: int = Form(1),
     days: list[str] = Form(default=[]),
     enabled: str = Form(default="on"),
-    selected_list: str = Form(default="default"),
+    list_name: str = Form(default="default"),
 ):
     cfg = load_config()
-    cfg["roku_ip"] = roku_ip.strip()
-    cfg["time_hhmm"] = time_hhmm.strip()
-    cfg["repeat_every_weeks"] = int(repeat_every_weeks)
-    cfg["days"] = [d for d in days if d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")]
+    sid = schedule_id.strip()
+    if not sid:
+        raise HTTPException(400, "schedule_id required")
+    if any(s.get("id") == sid for s in (cfg.get("schedules") or [])):
+        raise HTTPException(400, "schedule_id already exists")
 
-    cfg["enabled"] = (enabled == "on")
-
-    # select which list this schedule uses
     vls = cfg.get("video_lists") or {}
-    if selected_list in vls:
-        cfg["selected_list"] = selected_list
-    else:
-        cfg["selected_list"] = "default"
+    if list_name not in vls:
+        list_name = "default"
 
+    sched = {
+        "id": sid,
+        "enabled": (enabled == "on"),
+        "days": [d for d in days if d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")],
+        "time_hhmm": time_hhmm.strip(),
+        "repeat_every_weeks": int(repeat_every_weeks),
+        "list": list_name,
+    }
+    cfg.setdefault("schedules", []).append(sched)
     save_config(cfg)
-    try:
-        schedule_job(cfg)
-    except Exception as e:
-        raise HTTPException(400, str(e))
-
+    schedule_jobs(cfg)
     return RedirectResponse(url="/", status_code=303)
 
 
@@ -288,19 +340,20 @@ def save_videos(
 
 
 @app.post("/delete-schedule")
-def delete_schedule():
+def delete_schedule(schedule_id: str = Form(...)):
     cfg = load_config()
-    cfg["enabled"] = False
+    cfg["schedules"] = [s for s in (cfg.get("schedules") or []) if s.get("id") != schedule_id]
     save_config(cfg)
-    try:
-        schedule_job(cfg)
-    except Exception:
-        pass
+    schedule_jobs(cfg)
     return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/run-now")
-def run_now():
+def run_now(list_name: str = Form(default="default")):
     cfg = load_config()
-    run_roku(cfg)
+    # run using selected list or provided list_name
+    vls = cfg.get("video_lists") or {}
+    if list_name not in vls:
+        list_name = "default"
+    run_roku(cfg, {"id": "manual", "list": list_name})
     return RedirectResponse(url="/", status_code=303)
