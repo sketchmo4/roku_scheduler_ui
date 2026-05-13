@@ -27,21 +27,24 @@ LOG_PATH = DATA_DIR / "runs.log"
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "roku_ip": "10.0.0.141",
+
+    # schedule
+    "enabled": True,
     "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
     "time_hhmm": "07:00",
     "repeat_every_weeks": 1,
-    "press_home_first": False,
 
     # YouTube launching
     "launch_youtube": True,
     "youtube_app_name": "YouTube",
     "youtube_fallback_app_id": "837",
 
-    # Video library managed in the UI
-    "videos": [],  # [{"url": "https://www.youtube.com/watch?v=...", "active": true}]
+    # Video lists managed in the UI
+    "video_lists": {
+        "default": [],  # [{"url": "https://www.youtube.com/watch?v=...", "active": true}]
+    },
+    "selected_list": "default",
     "pick_mode": "random_active",  # random_active | first_active
-
-    "enabled": False,
 }
 
 
@@ -58,10 +61,23 @@ def load_config() -> dict:
         cfg = json.loads(CONFIG_PATH.read_text("utf-8"))
         merged = dict(DEFAULT_CONFIG)
         merged.update(cfg or {})
-        # normalize videos list
-        vids = merged.get("videos")
-        if not isinstance(vids, list):
-            merged["videos"] = []
+        # migrate legacy "videos" into video_lists.default if present
+        if isinstance(merged.get("videos"), list) and merged.get("videos") and not merged.get("video_lists", {}).get("default"):
+            merged.setdefault("video_lists", {}).setdefault("default", [])
+            merged["video_lists"]["default"] = merged["videos"]
+        merged.pop("videos", None)
+
+        # normalize video_lists
+        vls = merged.get("video_lists")
+        if not isinstance(vls, dict):
+            merged["video_lists"] = {"default": []}
+        merged.setdefault("video_lists", {}).setdefault("default", [])
+
+        sel = merged.get("selected_list") or "default"
+        if sel not in merged["video_lists"]:
+            sel = "default"
+        merged["selected_list"] = sel
+
         return merged
     except Exception:
         return dict(DEFAULT_CONFIG)
@@ -138,8 +154,10 @@ def run_roku(cfg: dict) -> None:
                 "youtube_fallback_app_id", "837"
             )
 
-            # pick video
-            videos = cfg.get("videos") or []
+            # pick video (from selected list)
+            video_lists = cfg.get("video_lists") or {}
+            list_name = cfg.get("selected_list") or "default"
+            videos = video_lists.get(list_name) or []
             active = [v for v in videos if (v or {}).get("active") and (v or {}).get("url")]
             pick_mode = (cfg.get("pick_mode") or "random_active").strip()
 
@@ -159,7 +177,7 @@ def run_roku(cfg: dict) -> None:
                 return
 
             launch(roku_ip, str(app_id), params=params)
-            log(f"OK: launched YouTube video: {chosen_url}")
+            log(f"OK: launched YouTube video (list={list_name}): {chosen_url}")
     except Exception as e:
         log(f"ERROR: {type(e).__name__}: {e}")
 
@@ -196,6 +214,8 @@ def save_schedule(
     time_hhmm: str = Form(...),
     repeat_every_weeks: int = Form(1),
     days: list[str] = Form(default=[]),
+    enabled: str = Form(default="on"),
+    selected_list: str = Form(default="default"),
 ):
     cfg = load_config()
     cfg["roku_ip"] = roku_ip.strip()
@@ -203,8 +223,14 @@ def save_schedule(
     cfg["repeat_every_weeks"] = int(repeat_every_weeks)
     cfg["days"] = [d for d in days if d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")]
 
-    # Always enable when saving schedule (no toggle in UI)
-    cfg["enabled"] = True
+    cfg["enabled"] = (enabled == "on")
+
+    # select which list this schedule uses
+    vls = cfg.get("video_lists") or {}
+    if selected_list in vls:
+        cfg["selected_list"] = selected_list
+    else:
+        cfg["selected_list"] = "default"
 
     save_config(cfg)
     try:
@@ -217,6 +243,8 @@ def save_schedule(
 
 @app.post("/save-videos")
 def save_videos(
+    list_name: str = Form(default="default"),
+    new_list_name: str = Form(default=""),
     pick_mode: str = Form(default="random_active"),
     videos_text: str = Form(default=""),
 ):
@@ -226,6 +254,18 @@ def save_videos(
     if pick_mode not in ("random_active", "first_active"):
         pick_mode = "random_active"
     cfg["pick_mode"] = pick_mode
+
+    vls = cfg.get("video_lists") or {}
+    if not isinstance(vls, dict):
+        vls = {"default": []}
+
+    nl = (new_list_name or "").strip()
+    if nl:
+        vls.setdefault(nl, [])
+        list_name = nl
+
+    if list_name not in vls:
+        list_name = "default"
 
     videos = []
     for raw in (videos_text or "").splitlines():
@@ -238,9 +278,24 @@ def save_videos(
             line = line.lstrip("#").strip()
         if line:
             videos.append({"url": line, "active": active})
-    cfg["videos"] = videos
+    vls[list_name] = videos
+
+    cfg["video_lists"] = vls
+    cfg["selected_list"] = list_name
 
     save_config(cfg)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/delete-schedule")
+def delete_schedule():
+    cfg = load_config()
+    cfg["enabled"] = False
+    save_config(cfg)
+    try:
+        schedule_job(cfg)
+    except Exception:
+        pass
     return RedirectResponse(url="/", status_code=303)
 
 

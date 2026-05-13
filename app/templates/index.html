@@ -13,13 +13,29 @@
       pre { background:#111; color:#eee; padding: 12px; border-radius: 10px; overflow:auto; }
       .hint { color:#555; font-size: 14px; margin-top: 6px; }
       .card { border:1px solid #ddd; border-radius: 12px; padding: 14px; margin-top: 14px; }
+      hr { border:0; border-top:1px solid #eee; margin: 18px 0; }
+      .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#f3f3f3; font-size:12px; }
     </style>
   </head>
   <body>
     <h1>Roku Scheduler</h1>
-    <div class="hint">Schedules a daily/weekly job to launch YouTube on your Roku via Roku ECP.</div>
+    <div class="hint">Schedules a job to launch a random active YouTube video on your Roku via Roku ECP.</div>
 
     <div class="card">
+      <h2>Current schedule</h2>
+      <div class="hint">
+        Status:
+        {% if cfg.enabled %}
+          <span class="pill">ENABLED</span>
+        {% else %}
+          <span class="pill">DISABLED</span>
+        {% endif %}
+        &nbsp;|&nbsp; Days: <b>{{ cfg.days|join(', ') }}</b>
+        &nbsp;|&nbsp; Time: <b>{{ cfg.time_hhmm }}</b>
+        &nbsp;|&nbsp; Repeat every: <b>{{ cfg.repeat_every_weeks }}</b> week(s)
+        &nbsp;|&nbsp; List: <b>{{ cfg.selected_list }}</b>
+      </div>
+
       <form method="post" action="/save-schedule">
         <label>Roku IP</label>
         <input type="text" name="roku_ip" value="{{ cfg.roku_ip }}" />
@@ -36,14 +52,46 @@
 
         <label>Repeat every N weeks</label>
         <input type="number" min="1" max="12" name="repeat_every_weeks" value="{{ cfg.repeat_every_weeks }}" />
-        <div class="hint">Saving the schedule automatically enables it (no Enabled toggle).</div>
+
+        <label>Which list to play</label>
+        <select name="selected_list" style="padding:10px; font-size:16px;">
+          {% for name in cfg.video_lists.keys() %}
+            <option value="{{ name }}" {% if name == cfg.selected_list %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+
+        <label>Schedule enabled?</label>
+        <div class="row">
+          <label><input type="radio" name="enabled" value="on" {% if cfg.enabled %}checked{% endif %}/> On</label>
+          <label><input type="radio" name="enabled" value="off" {% if not cfg.enabled %}checked{% endif %}/> Off</label>
+        </div>
+        <div class="hint">This defaults to On. Switch to Off to stop scheduled runs.</div>
 
         <button type="submit">Save schedule</button>
       </form>
 
-      <hr style="margin: 18px 0;"/>
+      <form method="post" action="/delete-schedule" onsubmit="return confirm('Disable schedule?');">
+        <button type="submit" style="background:#fff;">Delete schedule (disable)</button>
+      </form>
 
+      <form method="post" action="/run-now">
+        <button type="submit">Run now</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Video lists</h2>
       <form method="post" action="/save-videos">
+        <label>Edit list</label>
+        <select name="list_name" style="padding:10px; font-size:16px;">
+          {% for name in cfg.video_lists.keys() %}
+            <option value="{{ name }}" {% if name == cfg.selected_list %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+
+        <label>Create new list (optional)</label>
+        <input type="text" name="new_list_name" placeholder="e.g. morning / night / kids" />
+
         <label>Pick mode</label>
         <div class="row">
           <label><input type="radio" name="pick_mode" value="random_active" {% if cfg.pick_mode == 'random_active' %}checked{% endif %}/> Random (active only)</label>
@@ -51,15 +99,11 @@
         </div>
 
         <label>Video library (one YouTube URL per line)</label>
-        <textarea name="videos_text" rows="10" style="width:100%; padding:10px; font-size:14px;">{% for v in cfg.videos %}{% if not v.active %}# {% endif %}{{ v.url }}
+        <textarea name="videos_text" rows="10" style="width:100%; padding:10px; font-size:14px;">{% for v in (cfg.video_lists.get(cfg.selected_list) or []) %}{% if not v.active %}# {% endif %}{{ v.url }}
 {% endfor %}</textarea>
         <div class="hint">Prefix a line with <code>#</code> to disable it. Only active videos are eligible for random selection.</div>
 
         <button type="submit">Save videos</button>
-      </form>
-
-      <form method="post" action="/run-now">
-        <button type="submit">Run now</button>
       </form>
     </div>
 
