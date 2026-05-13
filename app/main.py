@@ -30,7 +30,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
     "time_hhmm": "07:00",
     "repeat_every_weeks": 1,
-    "press_home_first": True,
+    "press_home_first": False,
 
     # YouTube launching
     "launch_youtube": True,
@@ -190,31 +190,43 @@ def home(request: Request):
     )
 
 
-@app.post("/save")
-def save(
+@app.post("/save-schedule")
+def save_schedule(
     roku_ip: str = Form(...),
     time_hhmm: str = Form(...),
     repeat_every_weeks: int = Form(1),
-    enabled: str | None = Form(default=None),
-    press_home_first: str | None = Form(default=None),
     days: list[str] = Form(default=[]),
-    pick_mode: str = Form(default="random_active"),
-    videos_text: str = Form(default=""),
 ):
     cfg = load_config()
     cfg["roku_ip"] = roku_ip.strip()
     cfg["time_hhmm"] = time_hhmm.strip()
     cfg["repeat_every_weeks"] = int(repeat_every_weeks)
     cfg["days"] = [d for d in days if d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")]
-    cfg["enabled"] = bool(enabled)
-    cfg["press_home_first"] = bool(press_home_first)
+
+    # Always enable when saving schedule (no toggle in UI)
+    cfg["enabled"] = True
+
+    save_config(cfg)
+    try:
+        schedule_job(cfg)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/save-videos")
+def save_videos(
+    pick_mode: str = Form(default="random_active"),
+    videos_text: str = Form(default=""),
+):
+    cfg = load_config()
 
     pick_mode = (pick_mode or "random_active").strip()
     if pick_mode not in ("random_active", "first_active"):
         pick_mode = "random_active"
     cfg["pick_mode"] = pick_mode
 
-    # parse videos from textarea: one URL per line; prefix with "#" to disable
     videos = []
     for raw in (videos_text or "").splitlines():
         line = raw.strip()
@@ -229,11 +241,6 @@ def save(
     cfg["videos"] = videos
 
     save_config(cfg)
-    try:
-        schedule_job(cfg)
-    except Exception as e:
-        raise HTTPException(400, str(e))
-
     return RedirectResponse(url="/", status_code=303)
 
 

@@ -20,7 +20,7 @@
     <div class="hint">Schedules a daily/weekly job to launch YouTube on your Roku via Roku ECP.</div>
 
     <div class="card">
-      <form method="post" action="/save">
+      <form method="post" action="/save-schedule">
         <label>Roku IP</label>
         <input type="text" name="roku_ip" value="{{ cfg.roku_ip }}" />
 
@@ -36,8 +36,14 @@
 
         <label>Repeat every N weeks</label>
         <input type="number" min="1" max="12" name="repeat_every_weeks" value="{{ cfg.repeat_every_weeks }}" />
-        <div class="hint">Example: 2 means it will run only on even-numbered ISO weeks.</div>
+        <div class="hint">Saving the schedule automatically enables it (no Enabled toggle).</div>
 
+        <button type="submit">Save schedule</button>
+      </form>
+
+      <hr style="margin: 18px 0;"/>
+
+      <form method="post" action="/save-videos">
         <label>Pick mode</label>
         <div class="row">
           <label><input type="radio" name="pick_mode" value="random_active" {% if cfg.pick_mode == 'random_active' %}checked{% endif %}/> Random (active only)</label>
@@ -49,12 +55,7 @@
 {% endfor %}</textarea>
         <div class="hint">Prefix a line with <code>#</code> to disable it. Only active videos are eligible for random selection.</div>
 
-        <div class="row" style="margin-top:12px;">
-          <label><input type="checkbox" name="press_home_first" {% if cfg.press_home_first %}checked{% endif %}/> Press Home before launching</label>
-          <label><input type="checkbox" name="enabled" {% if cfg.enabled %}checked{% endif %}/> Enabled</label>
-        </div>
-
-        <button type="submit">Save schedule</button>
+        <button type="submit">Save videos</button>
       </form>
 
       <form method="post" action="/run-now">
