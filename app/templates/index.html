@@ -114,7 +114,7 @@
         <label>Edit list</label>
         <select name="list_name" style="padding:10px; font-size:16px;">
           {% for name in cfg.video_lists.keys() %}
-            <option value="{{ name }}" {% if name == cfg.selected_list %}selected{% endif %}>{{ name }}</option>
+            <option value="{{ name }}" {% if name == cfg.ui_list %}selected{% endif %}>{{ name }}</option>
           {% endfor %}
         </select>
 
@@ -128,7 +128,7 @@
         </div>
 
         <label>Video library (one YouTube URL per line)</label>
-        <textarea name="videos_text" rows="10" style="width:100%; padding:10px; font-size:14px;">{% for v in (cfg.video_lists.get(cfg.selected_list) or []) %}{% if not v.active %}# {% endif %}{{ v.url }}
+        <textarea name="videos_text" rows="10" style="width:100%; padding:10px; font-size:14px;">{% for v in (cfg.video_lists.get(cfg.ui_list) or []) %}{% if not v.active %}# {% endif %}{{ v.url }}
 {% endfor %}</textarea>
         <div class="hint">Prefix a line with <code>#</code> to disable it. Only active videos are eligible for random selection.</div>
 

@@ -102,6 +102,12 @@ def load_config() -> dict:
         for k in ("enabled", "days", "time_hhmm", "repeat_every_weeks", "selected_list"):
             merged.pop(k, None)
 
+        # UI state: which list is currently being edited in the UI
+        ui_list = merged.get("ui_list") or "default"
+        if ui_list not in merged["video_lists"]:
+            ui_list = "default"
+        merged["ui_list"] = ui_list
+
         # validate schedule objects
         out = []
         seen = set()
@@ -333,7 +339,7 @@ def save_videos(
     vls[list_name] = videos
 
     cfg["video_lists"] = vls
-    cfg["selected_list"] = list_name
+    cfg["ui_list"] = list_name
 
     save_config(cfg)
     return RedirectResponse(url="/", status_code=303)
